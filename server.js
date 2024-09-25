@@ -1,52 +1,47 @@
 // server.js
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
+const socketIO = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIO(server);
 
-const rooms = new Map();
+// Store socket info by room
+const rooms = {};
 
 io.on('connection', (socket) => {
-  console.log('A user connected');
+  console.log('New client connected');
 
-  socket.on('join', (roomId) => {
+  socket.on('join-room', (roomId) => {
     socket.join(roomId);
-    if (!rooms.has(roomId)) {
-      rooms.set(roomId, new Set());
-    }
-    rooms.get(roomId).add(socket.id);
-    console.log(`User ${socket.id} joined room ${roomId}`);
+    rooms[socket.id] = roomId;
+    console.log(`User joined room: ${roomId}`);
   });
 
   socket.on('offer', (data) => {
-    socket.to(data.roomId).emit('offer', data);
+    const roomId = rooms[socket.id];
+    socket.to(roomId).emit('offer', data);
   });
 
   socket.on('answer', (data) => {
-    socket.to(data.roomId).emit('answer', data);
+    const roomId = rooms[socket.id];
+    socket.to(roomId).emit('answer', data);
   });
 
   socket.on('ice-candidate', (data) => {
-    socket.to(data.roomId).emit('ice-candidate', data);
+    const roomId = rooms[socket.id];
+    socket.to(roomId).emit('ice-candidate', data);
   });
 
   socket.on('disconnect', () => {
-    rooms.forEach((users, roomId) => {
-      if (users.has(socket.id)) {
-        users.delete(socket.id);
-        if (users.size === 0) {
-          rooms.delete(roomId);
-        }
-      }
-    });
-    console.log('A user disconnected');
+    const roomId = rooms[socket.id];
+    if (roomId) {
+      socket.leave(roomId);
+      delete rooms[socket.id];
+    }
+    console.log('Client disconnected');
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Signaling server running on port ${PORT}`);
-});
+server.listen(3000, () => console.log('Server running on port 3000'));
