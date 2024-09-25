@@ -1,47 +1,52 @@
 // server.js
 const express = require('express');
 const http = require('http');
-const socketIO = require('socket.io');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIo(server);
 
-// Store socket info by room
-const rooms = {};
+const rooms = new Map();
 
 io.on('connection', (socket) => {
-  console.log('New client connected');
+  console.log('A user connected');
 
-  socket.on('join-room', (roomId) => {
+  socket.on('join', (roomId) => {
     socket.join(roomId);
-    rooms[socket.id] = roomId;
-    console.log(`User joined room: ${roomId}`);
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, new Set());
+    }
+    rooms.get(roomId).add(socket.id);
+    console.log(`User ${socket.id} joined room ${roomId}`);
   });
 
   socket.on('offer', (data) => {
-    const roomId = rooms[socket.id];
-    socket.to(roomId).emit('offer', data);
+    socket.to(data.roomId).emit('offer', data);
   });
 
   socket.on('answer', (data) => {
-    const roomId = rooms[socket.id];
-    socket.to(roomId).emit('answer', data);
+    socket.to(data.roomId).emit('answer', data);
   });
 
   socket.on('ice-candidate', (data) => {
-    const roomId = rooms[socket.id];
-    socket.to(roomId).emit('ice-candidate', data);
+    socket.to(data.roomId).emit('ice-candidate', data);
   });
 
   socket.on('disconnect', () => {
-    const roomId = rooms[socket.id];
-    if (roomId) {
-      socket.leave(roomId);
-      delete rooms[socket.id];
-    }
-    console.log('Client disconnected');
+    rooms.forEach((users, roomId) => {
+      if (users.has(socket.id)) {
+        users.delete(socket.id);
+        if (users.size === 0) {
+          rooms.delete(roomId);
+        }
+      }
+    });
+    console.log('A user disconnected');
   });
 });
 
-server.listen(3000, () => console.log('Server running on port 3000'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Signaling server running on port ${PORT}`);
+});
